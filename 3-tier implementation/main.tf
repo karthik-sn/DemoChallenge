@@ -5,8 +5,8 @@ provider "azurerm" {
 
 # Create a resource group
 resource "azurerm_resource_group" "myrg" {
-  name     = "terraform-challenge"
-  location = "eastus"
+  name     = var.rg_name
+  location = var.location
 }
 # Create a Virtual Network
 resource "azurerm_virtual_network" "tfvnet" {
@@ -59,6 +59,7 @@ resource "azurerm_network_security_group" "nsg_web" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+  depends_on = [azurerm_virtual_network.tfvnet ]
 }
 ########################################################################################
 # Create public IP
@@ -67,6 +68,7 @@ resource "azurerm_public_ip" "pub_ip01" {
   location            = azurerm_resource_group.myrg.location
   resource_group_name = azurerm_resource_group.myrg.name
   allocation_method   = "Static"
+  depends_on = [azurerm_virtual_network.tfvnet ]
 }
 # Create Front End Load Balancer
 resource "azurerm_lb" "lb_pub_lb" {
@@ -78,12 +80,14 @@ resource "azurerm_lb" "lb_pub_lb" {
     name                 = "PublicIPAddress"
     public_ip_address_id = azurerm_public_ip.pub_ip01.id
   }
+   depends_on = [azurerm_virtual_network.tfvnet,azurerm_subnet.subnet1 ]
 }
 # Configure Backend Pool for Front End Load Balancer
 resource "azurerm_lb_backend_address_pool" "lb_webpool" {
   resource_group_name = azurerm_resource_group.myrg.name
   loadbalancer_id     = azurerm_lb.lb_pub_lb.id
   name                = "BackEndAddressPool"
+  depends_on = [azurerm_virtual_network.tfvnet,azurerm_subnet.subnet2 ]
 }
 # Configure Health Probe for Front End Load Balancer
 resource "azurerm_lb_probe" "lb_https_probe" {
@@ -91,6 +95,7 @@ resource "azurerm_lb_probe" "lb_https_probe" {
   loadbalancer_id     = azurerm_lb.lb_pub_lb.id
   name                = "https-running-probe"
   port                = 443
+  depends_on = [azurerm_lb.lb_pub_lb ]
 }
 # Configure Load Balancing rule for Front End Load Balancer
 resource "azurerm_lb_rule" "lb_http_rule" {
@@ -101,6 +106,7 @@ resource "azurerm_lb_rule" "lb_http_rule" {
   frontend_port                  = 80
   backend_port                   = 80
   frontend_ip_configuration_name = "PublicIPAddress"
+  depends_on = [azurerm_lb.lb_pub_lb ]
 }
 #########################################################################################
 # Create Availability Set
@@ -122,14 +128,15 @@ resource "azurerm_network_interface" "web01-nic" {
     subnet_id                     = azurerm_subnet.subnet1.id
     private_ip_address_allocation = "Dynamic"
   }
+  depends_on = [azurerm_subnet.subnet1]
 }
 resource "azurerm_windows_virtual_machine" "web01" {
   name                = "web01"
   resource_group_name = azurerm_resource_group.myrg.name
   location            = azurerm_resource_group.myrg.location
   size                = "Standard_B1s"
-  admin_username      = "adminuser"
-  admin_password      = "P@$$w0rd1234!"
+  admin_username      = var.winusername
+  admin_password      = var.winpassword
   availability_set_id = azurerm_availability_set.web_avset.id
   network_interface_ids = [
     azurerm_network_interface.web01-nic.id,
@@ -146,6 +153,7 @@ resource "azurerm_windows_virtual_machine" "web01" {
     sku       = "2016-Datacenter"
     version   = "latest"
   }
+  depends_on = [azurerm_network_interface.web01-nic ]
 }
 resource "azurerm_network_interface" "web02-nic" {
   name                = "web02-nic"
@@ -156,14 +164,15 @@ resource "azurerm_network_interface" "web02-nic" {
     subnet_id                     = azurerm_subnet.subnet1.id
     private_ip_address_allocation = "Dynamic"
   }
+   depends_on = [azurerm_subnet.subnet1]
 }
 resource "azurerm_windows_virtual_machine" "web02" {
   name                = "web02"
   resource_group_name = azurerm_resource_group.myrg.name
   location            = azurerm_resource_group.myrg.location
   size                = "Standard_B1s"
-  admin_username      = "adminuser"
-  admin_password      = "P@$$w0rd1234!"
+  admin_username      = var.winusername
+  admin_password      = var.winpassword
   availability_set_id = azurerm_availability_set.web_avset.id
   network_interface_ids = [
     azurerm_network_interface.web02-nic.id,
@@ -180,6 +189,7 @@ resource "azurerm_windows_virtual_machine" "web02" {
     sku       = "2016-Datacenter"
     version   = "latest"
   }
+  depends_on = [azurerm_network_interface.web01-nic ]
 }
 
 
@@ -196,6 +206,7 @@ resource "azurerm_virtual_machine_extension" "web02_install_iis" {
       "commandToExecute": "powershell Add-WindowsFeature Web-Asp-Net45;Add-WindowsFeature NET-Framework-45-Core;Add-WindowsFeature Web-Net-Ext45;Add-WindowsFeature Web-ISAPI-Ext;Add-WindowsFeature Web-ISAPI-Filter;Add-WindowsFeature Web-Mgmt-Console;Add-WindowsFeature Web-Scripting-Tools;Add-WindowsFeature Search-Service;Add-WindowsFeature Web-Filtering;Add-WindowsFeature Web-Basic-Auth;Add-WindowsFeature Web-Windows-Auth;Add-WindowsFeature Web-Default-Doc;Add-WindowsFeature Web-Http-Errors;Add-WindowsFeature Web-Static-Content;"
     } 
 SETTINGS
+  depends_on = [azurerm_windows_virtual_machine.web02]
 }
 resource "azurerm_virtual_machine_extension" "web01_install_iis" {
   name                       = "web01_install_iis"
@@ -209,6 +220,7 @@ resource "azurerm_virtual_machine_extension" "web01_install_iis" {
       "commandToExecute": "powershell Add-WindowsFeature Web-Asp-Net45;Add-WindowsFeature NET-Framework-45-Core;Add-WindowsFeature Web-Net-Ext45;Add-WindowsFeature Web-ISAPI-Ext;Add-WindowsFeature Web-ISAPI-Filter;Add-WindowsFeature Web-Mgmt-Console;Add-WindowsFeature Web-Scripting-Tools;Add-WindowsFeature Search-Service;Add-WindowsFeature Web-Filtering;Add-WindowsFeature Web-Basic-Auth;Add-WindowsFeature Web-Windows-Auth;Add-WindowsFeature Web-Default-Doc;Add-WindowsFeature Web-Http-Errors;Add-WindowsFeature Web-Static-Content;"
     } 
 SETTINGS
+  depends_on = [azurerm_windows_virtual_machine.web01]
 }
 ############################################################################################
 # Create Backend Load Balancer
@@ -289,12 +301,13 @@ resource "azurerm_virtual_machine" "backend01" {
   }
   os_profile {
     computer_name  = "backend01"
-    admin_username = "backendadmin"
-    admin_password = "Password1234!"
+    admin_username = var.linuxusername
+    admin_password = var.linuxpassword
   }
   os_profile_linux_config {
     disable_password_authentication = false
   }
+  depends_on = [azurerm_network_interface.backend01-nic]
 }
 
 resource "azurerm_network_interface" "backend02-nic" {
@@ -329,12 +342,13 @@ resource "azurerm_virtual_machine" "backend02" {
   }
   os_profile {
     computer_name  = "backend02"
-    admin_username = "backendadmin"
-    admin_password = "Password1234!"
+    admin_username = var.linuxusername
+    admin_password = var.linuxpassword
   }
   os_profile_linux_config {
     disable_password_authentication = false
   }
+  depends_on = [azurerm_network_interface.backend02-nic]
 }
 
 ##############################################################################################
