@@ -34,9 +34,8 @@ Function Get-AzureMetadata {
     }
 }
 
-#eg 1: get metadata of a VM without any spesicif query
+#eg 1: get metadata of a VM without any specific query
 Get-AzureMetadata
-
 #eg 2: get metadata with specific query
 $query = 'compute/storageProfile'
 Get-AzureMetadata -query $query
